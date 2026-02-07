@@ -1,26 +1,29 @@
+
+#   This script purely *analyzes* already-matched objects.
+# ============================================================
+
 import ROOT
-
-# Enable multithreading for faster RDataFrame execution
-ROOT.EnableImplicitMT()
+ROOT.EnableImplicitMT()   # Enable ROOT multithreading
 
 # ============================================================
-# Load snapshot produced after GEN–RECO matching
-# This file already contains:
-#  - matchedGenIdx
-#  - matched GEN muon kinematics
-#  - leading RECO muon kinematics
+# Load matched events
 # ============================================================
+
+# DataFrame contains:
+#   - matchedGenIdx
+#   - matched GEN muon kinematics
+#   - leading RECO muon kinematics
+#   - GEN MET and PuppiMET
 df = ROOT.RDataFrame("Events", "Matched_muon.root")
 
-# Keep only events where the leading RECO muon
-# was successfully matched to a GEN muon
+# Keep only events where a valid GEN–RECO muon match exists
 df_matched = df.Filter("matchedGenIdx >= 0")
 
 # ============================================================
-# Basic sanity plots: GEN vs RECO muon pT
+# Basic checks: GEN vs RECO muon pT
 # ============================================================
 
-# Leading RECO muon pT (GEN-matched)
+# Leading RECO muon pT (only matched events)
 h_leadReco_pt = df_matched.Histo1D(
     ("h_leadReco_pt",
      "Leading RECO muon p_{T} (GEN-matched);p_{T}^{RECO} [GeV];Events",
@@ -37,16 +40,18 @@ h_matchedGen_pt = df_matched.Histo1D(
 )
 
 # 2D correlation: RECO vs GEN muon pT
+# Useful for spotting biases, tails, or mis-modelling
 h2_pt = df_matched.Histo2D(
     ("h2_reco_vs_gen_pt",
-     "Leading RECO p_{T} vs Matched GEN p_{T};p_{T}^{GEN} [GeV];p_{T}^{RECO} [GeV]",
+     "Leading RECO p_{T} vs Matched GEN p_{T};"
+     "p_{T}^{GEN} [GeV];p_{T}^{RECO} [GeV]",
      100, 0, 400,
      100, 0, 400),
     "matchedGen_pt",
     "leadReco_pt"
 )
 
-# Write these sanity-check histograms
+# Write initial sanity plots
 out = ROOT.TFile("output.root", "RECREATE")
 h_leadReco_pt.GetValue().Write()
 h_matchedGen_pt.GetValue().Write()
@@ -54,7 +59,8 @@ h2_pt.GetValue().Write()
 out.Close()
 
 # ============================================================
-# Define transverse mass function (shared by GEN and RECO)
+# Define transverse mass function
+#   MT = sqrt( 2 pT^MUON pT^MET (1 - cos Δφ) )
 # ============================================================
 
 ROOT.gInterpreter.Declare("""
@@ -73,7 +79,7 @@ float mtw(float lep_pt, float lep_phi,
 """)
 
 # ============================================================
-# Compute MTW at RECO and GEN level (no cuts)
+# Construct MTW at GEN and RECO level (no cuts)
 # ============================================================
 
 df_matched = df_matched.Define(
@@ -104,7 +110,8 @@ h_mtw_gen = df_matched.Histo1D(
 # GEN vs RECO MTW correlation
 h2_mtw = df_matched.Histo2D(
     ("h2_mtw_reco_vs_gen",
-     "RECO vs GEN W transverse mass;M_{T}^{GEN} [GeV];M_{T}^{RECO} [GeV]",
+     "RECO vs GEN W transverse mass;"
+     "M_{T}^{GEN} [GeV];M_{T}^{RECO} [GeV]",
      120, 0, 240,
      120, 0, 240),
     "mtw_gen",
@@ -119,6 +126,7 @@ out.Close()
 
 # ============================================================
 # Apply analysis-level kinematic cuts
+#   (typical single-muon W selection)
 # ============================================================
 
 df_matched_cut = (
@@ -131,7 +139,10 @@ df_matched_cut = (
     .Filter("GenMET_pt > 25")
 )
 
-# Muon pT after cuts
+# ============================================================
+# Compare muon pT before vs after cuts
+# ============================================================
+
 h_leadReco_pt_cut = df_matched_cut.Histo1D(
     ("h_leadReco_pt_cut",
      "Leading RECO muon p_{T} (after cuts);p_{T}^{RECO} [GeV];Events",
@@ -139,14 +150,12 @@ h_leadReco_pt_cut = df_matched_cut.Histo1D(
     "leadReco_pt"
 )
 
-h_matchedGen_pt_cut = df_matched_cut.Histo1D(
-    ("h_matchedGen_pt",
-     "Matched GEN muon p_{T} (after cuts);p_{T}^{GEN} [GeV];Events",
-     100, 0, 400),
-    "matchedGen_pt"
-)
+#
 
-# MTW after cuts
+# ============================================================
+# Recompute MTW after cuts
+# ============================================================
+
 df_matched_cut = df_matched_cut.Define(
     "mtw_reco_cut",
     "mtw(leadReco_pt, leadReco_phi, PuppiMET_pt, PuppiMET_phi)"
@@ -189,9 +198,10 @@ h2_mtw_cut.GetValue().Write()
 out.Close()
 
 # ============================================================
-# MET validation: GEN MET vs PuppiMET
+# MET COMPARISON: GEN MET vs PuppiMET
 # ============================================================
 
+# This checks MET scale/resolution effects entering MTW
 h_gen_met_pt = df_matched_cut.Histo1D(
     ("h_gen_met_pt",
      "GEN MET p_{T};p_{T}^{GEN MET} [GeV];Events",
@@ -217,10 +227,10 @@ h2_gen_vs_puppi_met = df_matched_cut.Histo2D(
 )
 
 # ============================================================
-# Compute W transverse momentum (boost) at GEN and RECO level
+# Compute W transverse momentum (boost)
 # ============================================================
 
-# GEN W pT from mu + nu
+# GEN W pT = vector sum of GEN muon + GEN neutrino
 df_matched_cut = df_matched_cut.Define(
     "W_gen_px",
     "matchedGen_pt * cos(matchedGen_phi) + GenMET_pt * cos(GenMET_phi)"
@@ -236,7 +246,7 @@ df_matched_cut = df_matched_cut.Define(
     "sqrt(W_gen_px*W_gen_px + W_gen_py*W_gen_py)"
 )
 
-# RECO W pT from mu + MET
+# RECO W pT = vector sum of RECO muon + Puppi MET
 df_matched_cut = df_matched_cut.Define(
     "W_reco_px",
     "leadReco_pt * cos(leadReco_phi) + PuppiMET_pt * cos(PuppiMET_phi)"
@@ -253,7 +263,11 @@ df_matched_cut = df_matched_cut.Define(
 )
 
 # ============================================================
-# MTW in W-boost bins (GEN and RECO definitions)
+# MTW in bins of W transverse momentum
+#
+# Purpose:
+#   - Study boost smearing of the Jacobian edge
+#   - Compare GEN vs RECO behaviour
 # ============================================================
 
 boost_bins = [(0,20),(20,40),(40,60),(60,100),(100,200)]
@@ -263,7 +277,7 @@ h_mtw_reco_in_genBoost  = []
 h_mtw_gen_in_recoBoost  = []
 h_mtw_reco_in_recoBoost = []
 
-# Bin by GEN W boost
+# Bin by GEN W pT
 for lo, hi in boost_bins:
     df_bin = df_matched_cut.Filter(f"boostW_gen >= {lo} && boostW_gen < {hi}")
 
@@ -285,7 +299,7 @@ for lo, hi in boost_bins:
         )
     )
 
-# Bin by RECO W boost
+# Bin by RECO W pT
 for lo, hi in boost_bins:
     df_bin = df_matched_cut.Filter(f"boostW_reco >= {lo} && boostW_reco < {hi}")
 
@@ -307,7 +321,7 @@ for lo, hi in boost_bins:
         )
     )
 
-# Write boost-binned MTW histograms
+# Write all boost-binned MTW histograms
 out = ROOT.TFile("mtw_in_boost_bins.root", "RECREATE")
 for hlist in [h_mtw_gen_in_genBoost,
               h_mtw_reco_in_genBoost,
