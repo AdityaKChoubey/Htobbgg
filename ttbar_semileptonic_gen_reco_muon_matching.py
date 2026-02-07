@@ -2,7 +2,7 @@
 import ROOT
 import os
 
-Fname ="/home/aditya/Desktop/ttbar_run3/ANALYSIS 1/TTtoLNu2Q_TuneCP5_13p6TeV_powheg-pythia8_2024.root"
+Fname ="/home/aditya/Desktop/ttbar_run3/ANALYSIS 1/TTtoLNu2Q_TuneCP5_13p6TeV_powheg-pythia8_2024.root"  #filepath 
 df = ROOT.RDataFrame("Events",Fname)
 
 df0 = df
