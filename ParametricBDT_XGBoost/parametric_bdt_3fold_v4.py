@@ -11,9 +11,7 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import roc_auc_score, roc_curve
 from xgboost import XGBClassifier
 
-# =========================
-# CONFIG
-# =========================
+#configurations
 
 SIGNAL_DIR = "."
 SIGNAL_PATTERN = "curated_signal_m*.root"
@@ -29,9 +27,7 @@ plt.rcParams.update({
     "axes.grid": True
 })
 
-# =========================
-# MODEL CONFIGS
-# =========================
+#Models
 
 MODEL_CONFIGS = {
     "model1":  dict(n_estimators=500,  max_depth=4, learning_rate=0.05, subsample=0.8, colsample_bytree=0.8),
@@ -63,9 +59,7 @@ BASE_PARAMS = dict(
     n_jobs=8,
 )
 
-# =========================
-# HELPERS
-# =========================
+#helper functions
 
 def extract_mass(path):
     m = re.search(r"m(\d+)", path)
@@ -87,9 +81,7 @@ def avg_roc(roc_list):
         tprs.append(f(mean_fpr))
     return mean_fpr, np.mean(tprs, axis=0)
 
-# =========================
-# LOAD DATA
-# =========================
+#Data Loading
 
 signal_files = glob.glob(os.path.join(SIGNAL_DIR, SIGNAL_PATTERN))
 signal_map = {extract_mass(f): f for f in signal_files}
@@ -117,9 +109,7 @@ y = df_all["label"].astype(int)
 
 kf = StratifiedKFold(n_splits=3, shuffle=True, random_state=RANDOM_STATE)
 
-# =========================
-# TRAINING
-# =========================
+#Training 
 
 mass_auc_records   = []
 all_model_mass_auc = {}
@@ -135,7 +125,7 @@ for name, params in MODEL_CONFIGS.items():
     train_aucs       = []
     test_aucs_global = []
 
-    # Keep last fold for BDT plot
+    # Keep last fold for BDT distribution plot
     last_train_scores = last_y_train = None
     last_test_scores  = last_y_test  = None
 
@@ -207,9 +197,9 @@ for name, params in MODEL_CONFIGS.items():
     mass_mean_auc = {m: np.mean(test_aucs_mass[m]) for m in mass_points if test_aucs_mass[m]}
     all_model_mass_auc[name] = mass_mean_auc
 
-    # =========================================================
-    # PLOT 1 — GLOBAL ROC
-    # =========================================================
+    #
+    # PLOT 1 — All mass point ROC
+    #
     fig, ax = plt.subplots()
 
     for fpr, tpr in roc_train_folds:
@@ -239,9 +229,9 @@ for name, params in MODEL_CONFIGS.items():
     fig.savefig(f"{OUTDIR}/{name}_roc_global.png", dpi=300,bbox_inches="tight")
     plt.close(fig)
 
-    # =========================================================
-    # PLOT 2 — BDT OUTPUT DISTRIBUTION
-    # =========================================================
+    
+    # PLOT 2 — BDT Dist
+    
     fig, ax = plt.subplots()
 
     bins = 50
@@ -271,9 +261,9 @@ for name, params in MODEL_CONFIGS.items():
     fig.savefig(f"{OUTDIR}/{name}_bdt.png", dpi=300,bbox_inches="tight")
     plt.close(fig)
 
-    # =========================================================
-    # PLOT 3 — MASS ROC (fold-averaged, one curve per mass)
-    # =========================================================
+    
+    # PLOT 3 — MASS point ROC (fold-averaged, one curve per mass)
+    
     cmap   = plt.get_cmap("tab10")
     colors = [cmap(i % 10) for i in range(len(mass_points))]
 
@@ -296,9 +286,9 @@ for name, params in MODEL_CONFIGS.items():
     fig.savefig(f"{OUTDIR}/{name}_roc_mass.png", dpi=300,bbox_inches="tight")
     plt.close(fig)
 
-    # =========================================================
+    
     # PLOT 4 — AUC vs MASS
-    # =========================================================
+    
     masses = sorted(mass_mean_auc.keys())
     aucs   = [mass_mean_auc[m] for m in masses]
 
@@ -323,9 +313,7 @@ for name, params in MODEL_CONFIGS.items():
     fig.savefig(f"{OUTDIR}/{name}_auc_vs_mass.png", dpi=300,bbox_inches="tight")
     plt.close(fig)
 
-# =========================
-# SAVE CSV
-# =========================
+
 
 df_mass_auc = pd.DataFrame(mass_auc_records)
 df_mass_auc = df_mass_auc.groupby(["model", "mass"]).mean().reset_index()
